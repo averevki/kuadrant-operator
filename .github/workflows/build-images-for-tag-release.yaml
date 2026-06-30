@@ -7,13 +7,17 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-?**"
 env:
   IMG_REGISTRY_HOST: quay.io
-  IMG_REGISTRY_ORG: kuadrant
+  IMG_REGISTRY_ORG: averevki
   OPERATOR_NAME: kuadrant-operator
 
 jobs:
   build:
     name: Build and Push image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
       image: ${{ steps.push-to-quay.outputs.registry-path }}
@@ -53,7 +57,7 @@ jobs:
         run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}"
 
       - name: Push Image
-        if: github.repository_owner == 'kuadrant'
+        if: github.repository_owner == 'averevki'
         id: push-to-quay
         uses: redhat-actions/push-to-registry@v2
         with:
@@ -66,10 +70,36 @@ jobs:
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
 
+      - name: Login to registry for cosign
+        if: github.repository_owner == 'averevki'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # ratchet:docker/login-action@v3
+        with:
+          registry: ${{ env.IMG_REGISTRY_HOST }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+      - name: Install cosign
+        if: github.repository_owner == 'averevki'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # ratchet:sigstore/cosign-installer@v3
+      - name: Sign image with cosign
+        if: github.repository_owner == 'averevki'
+        run: |
+          cosign sign --yes ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}@${{ steps.push-to-quay.outputs.digest }}
+      - name: Attest build provenance
+        if: github.repository_owner == 'averevki'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # ratchet:actions/attest@v4
+        with:
+          subject-name: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}
+          subject-digest: ${{ steps.push-to-quay.outputs.digest }}
+          push-to-registry: true
+
   build-bundle:
     name: Build and Push bundle image
     needs: [build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
       image: ${{ steps.push-to-quay.outputs.registry-path }}
@@ -110,7 +140,7 @@ jobs:
         run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Operator IMG = ${{ steps.parsed-operator-image.outputs.url }}"
 
       - name: Push Image
-        if: github.repository_owner == 'kuadrant'
+        if: github.repository_owner == 'averevki'
         id: push-to-quay
         uses: redhat-actions/push-to-registry@v2
         with:
@@ -123,10 +153,36 @@ jobs:
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
 
+      - name: Login to registry for cosign
+        if: github.repository_owner == 'averevki'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # ratchet:docker/login-action@v3
+        with:
+          registry: ${{ env.IMG_REGISTRY_HOST }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+      - name: Install cosign
+        if: github.repository_owner == 'averevki'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # ratchet:sigstore/cosign-installer@v3
+      - name: Sign image with cosign
+        if: github.repository_owner == 'averevki'
+        run: |
+          cosign sign --yes ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-bundle@${{ steps.push-to-quay.outputs.digest }}
+      - name: Attest build provenance
+        if: github.repository_owner == 'averevki'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # ratchet:actions/attest@v4
+        with:
+          subject-name: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-bundle
+          subject-digest: ${{ steps.push-to-quay.outputs.digest }}
+          push-to-registry: true
+
   build-catalog:
     name: Build and Push catalog image
     needs: [build, build-bundle]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
       image: ${{ steps.push-to-quay.outputs.registry-path }}
@@ -192,7 +248,7 @@ jobs:
           echo "Bundle IMG = ${{ steps.parsed-operator-bundle.outputs.image }}"
 
       - name: Push Image
-        if: github.repository_owner == 'kuadrant'
+        if: github.repository_owner == 'averevki'
         id: push-to-quay
         uses: redhat-actions/push-to-registry@v2
         with:
@@ -204,6 +260,28 @@ jobs:
 
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
+
+      - name: Login to registry for cosign
+        if: github.repository_owner == 'averevki'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # ratchet:docker/login-action@v3
+        with:
+          registry: ${{ env.IMG_REGISTRY_HOST }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+      - name: Install cosign
+        if: github.repository_owner == 'averevki'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # ratchet:sigstore/cosign-installer@v3
+      - name: Sign image with cosign
+        if: github.repository_owner == 'averevki'
+        run: |
+          cosign sign --yes ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-catalog@${{ steps.push-to-quay.outputs.digest }}
+      - name: Attest build provenance
+        if: github.repository_owner == 'averevki'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # ratchet:actions/attest@v4
+        with:
+          subject-name: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-catalog
+          subject-digest: ${{ steps.push-to-quay.outputs.digest }}
+          push-to-registry: true
 
   verify-builds:
     name: Ensure all image references are equal (operator, bundle, catalog)
